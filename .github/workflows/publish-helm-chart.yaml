@@ -1,0 +1,59 @@
+name: Build and publish helm chart
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'charts/**'
+
+env: 
+  REGISTRY: ghcr.io
+  CHART_NAME: helm-test
+
+jobs:
+  build_and_publish_helm_chart:
+    name: Push helm chart to registry
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4.3.0
+
+      - name: Package Helm Chart
+        run: |
+          helm dependency update ./charts/${{env.CHART_NAME}}
+          helm lint ./charts/${{env.CHART_NAME}}
+          helm package ./charts/${{env.CHART_NAME}}
+
+      - name: Check helm chart version on registry
+        run: | 
+          VERSION=$(helm show chart charts/${{env.CHART_NAME}} | grep "^version:" | cut -d ':' -f 2)
+          echo "Check chart with version v${VERSION} is not already on ${{env.REGISTRY}}..."
+          helm show chart oci://${{env.REGISTRY}}/${{ github.repository_owner,, }}/${{env.CHART_NAME}} --version $VERSION > test.txt || true
+          if [ -s test.txt ]; then
+            echo "...chart version is already on ${{env.REGISTRY}}"
+            echo "version_on_registry=1" >> "$GITHUB_ENV"
+          else
+            echo "...version not on ${{env.REGISTRY}}."
+            echo "version_on_registry=0" >> "$GITHUB_ENV"
+          fi        
+          
+      - name: Push Helm Chart
+        # Publish chart only on changes on main branch and if version does not exist on registry.
+        if: github.ref == 'refs/heads/main'
+        run: | 
+          if [ $version_on_registry != 0 ]; then
+            echo "Failed: Chart version is already on ${{env.REGISTRY}}!"
+            exit 1
+          fi
+          echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ${{env.REGISTRY}} --username ${{ github.actor }} --password-stdin
+          helm push ${{env.CHART_NAME}}-*.tgz oci://${{env.REGISTRY}}/${{ github.repository_owner,, }}/
