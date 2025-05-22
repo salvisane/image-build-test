@@ -39,8 +39,8 @@ jobs:
           VERSION=$(helm show chart charts/${{env.CHART_NAME}} | grep "^version:" | cut -d ':' -f 2)
           echo "Check chart with version v${VERSION} is not already on ${{env.REGISTRY}}..."
           echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ${{env.REGISTRY}} --username ${{ github.actor }} --password-stdin
-          helm show chart oci://${{env.REGISTRY}}/${{ github.repository_owner }}/${{env.CHART_NAME}} --version $VERSION > test.txt || true
-          if [ -s test.txt ]; then
+          helm show chart oci://${{env.REGISTRY}}/${{ github.repository_owner }}/${{env.CHART_NAME}} --version $VERSION > version.txt || true
+          if [ -s version.txt ]; then
             echo "...chart version is already on ${{env.REGISTRY}}"
             echo "version_on_registry=1" >> "$GITHUB_ENV"
           else
